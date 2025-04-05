@@ -48,4 +48,46 @@ async function getSensorData() {
     return result;
 }
 
-module.exports = { getSensorData };
+/**
+ * Realiza una consulta a InfluxDB para obtener todos los datos de los sensores.
+ * @returns {Promise<Array>} Todos los datos de los sensores en formato JSON.
+ */
+async function getAllSensorData() {
+    const query = `
+    from(bucket: "${INFLUX_BUCKET}")
+      |> range(start: -1h)
+      |> filter(fn: (r) => r._field == "humedad" or r._field == "tempDHT" or r._field == "tempBMP" or r._field == "presion")
+      |> sort(columns: ["_time"])
+  `;
+
+    const response = await fetch(INFLUX_URL, {
+        method: "POST",
+        headers: {
+            "Authorization": `Token ${INFLUX_TOKEN}`,
+            "Content-Type": "application/json",
+            "Accept": "application/csv", // Solicita CSV como respuesta
+        },
+        body: JSON.stringify({ query, type: "flux" }),
+    });
+
+    const responseText = await response.text();
+    console.log("Respuesta de InfluxDB (todos los datos):", responseText);
+
+    if (!response.ok) {
+        throw new Error(`Error al consultar InfluxDB: ${responseText}`);
+    }
+
+    // Convertir CSV a JSON
+    const jsonData = await csv().fromString(responseText);
+
+    // Procesar los datos para estructurarlos como un array de objetos
+    const result = jsonData.map((row) => ({
+        time: row["_time"],
+        field: row["_field"],
+        value: parseFloat(row["_value"]),
+    }));
+
+    return result;
+}
+
+module.exports = { getSensorData, getAllSensorData };
